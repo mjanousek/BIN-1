@@ -4,6 +4,7 @@
 #include <string>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 #include "cgp.h"
 
 typedef int *chromozom;                //dynamicke pole int, velikost dana m*n*(vstupu bloku+vystupu bloku) + vystupu komb
@@ -124,11 +125,11 @@ int uzitobloku(chromozom p_chrom) {
 //p_svystup ukazatel na pozadovane hodnoty vystupu
 //p_vystup ukazatel na pole vstupnich a vystupnich hodnot bloku
 //-----------------------------------------------------------------------
-inline int fitness(chromozom p_chrom, int *p_svystup) {
+inline int fitness(chromozom p_chrom, int *ocekavane_vystupy) {
     int in1,in2,fce;
     int i,j;
     int *p_vystup = vystupy;
-    p_vystup += param_in; //posunuti az za hodnoty vstupu
+    p_vystup += param_in; //posunuti az za hodnoty vstupu // TODO nevim jestli to tady nebude neplechu
 
     //Simulace obvodu pro dany stav vstupu
     //----------------------------------------------------------------------------
@@ -140,37 +141,30 @@ inline int fitness(chromozom p_chrom, int *p_svystup) {
             switch (fce) {
               case 0: *p_vystup++ = in1; break;       //in1
 
-              case 1: *p_vystup++ = in1 & in2; break; //and
-              case 2: *p_vystup++ = in1 | in2; break; //or
-              case 3: *p_vystup++ = in1 ^ in2; break; //xor
+              case 1: *p_vystup++ = in1 + in2; break; //and
+              case 2: *p_vystup++ = in1 - in2; break; //sub
+              case 3: *p_vystup++ = in1 << 1; break; //xor
 
-              case 4: *p_vystup++ = ~in1; break;  //not in1
-              case 5: *p_vystup++ = ~in2; break;  //not in2
-
-              case 6: *p_vystup++ = in1 & ~in2; break;
-              case 7: *p_vystup++ = ~(in1 & in2); break;
-              case 8: *p_vystup++ = ~(in1 | in2); break;
+//              case 4: *p_vystup++ = ~in1; break;  //not in1
+//              case 5: *p_vystup++ = ~in2; break;  //not in2
+//
+//              case 6: *p_vystup++ = in1 & ~in2; break;
+//              case 7: *p_vystup++ = ~(in1 & in2); break;
+//              case 8: *p_vystup++ = ~(in1 | in2); break;
               default: ;
                  *p_vystup++ = 0xffffffff; //log 1
             }
         }
     }
 
-    register int vysl;
-    register int pocok = 0; //pocet shodnych bitu
+    int vysl = 0;
+//    register int pocok = 0; //pocet shodnych bitu
 
     //Vyhodnoceni odezvy
     //----------------------------------------------------------------------------
     //pomoci 4 nahledu do lookup tabulky
     for (i=0; i < param_out; i++) {  
-        vysl = (vystupy[*p_chrom++] ^ *p_svystup++);
-        pocok += lookupbit_tab[vysl & 0xff]; //pocet 0 => pocet spravnych
-        vysl = vysl >> 8;
-        pocok += lookupbit_tab[vysl & 0xff];
-        vysl = vysl >> 8;
-        pocok += lookupbit_tab[vysl & 0xff];
-        vysl = vysl >> 8;
-        pocok += lookupbit_tab[vysl & 0xff];
+        vysl += abs(vystupy[*p_chrom++] - ocekavane_vystupy[i]);
     }
 
     /*
@@ -181,29 +175,30 @@ inline int fitness(chromozom p_chrom, int *p_svystup) {
         vysl = vysl >> 1;
     }
     */
-    return pocok;
+    return vysl;
 }
 
 //-----------------------------------------------------------------------
 //OHODNOCENI POPULACE
 //=======================================================================
-inline void ohodnoceni(int *vstup_komb, int minidx, int maxidx, int ignoreidx) {
+inline void ohodnoceni(int *ocekavane_vystupy, int minidx, int maxidx, int ignoreidx) {
     int fit;
-    for (int l=0; l < param_fitev; l++) {
+//    for (int l=0; l < param_fitev; l++) {
         //nakopirovani vstupnich dat na vstupy komb. site
-        memcpy(vystupy, vstup_komb, param_in*sizeof(int));
-        vstup_komb += param_in;
+        int in[1] = {1};
+        memcpy(vystupy, in, param_in*sizeof(int));
+//        vstup_komb += param_in;
 
         //simulace obvodu vsech jedincu populace pro dane vstupy
         for (int i=minidx; i < maxidx; i++) {
             if (i == ignoreidx) continue;
             
-            fit = fitness((int *) populace[i], vstup_komb);
-            (l==0) ? fitt[i] = fit : fitt[i] += fit;
+            fit = fitness((int *) populace[i], ocekavane_vystupy);
+            fitt[i] = fit;
         }
 
-        vstup_komb += param_out; //posun na dalsi vstupni kombinace
-    }
+//        vstup_komb += param_out; //posun na dalsi vstupni kombinace
+//    }
 }
 
 //-----------------------------------------------------------------------
@@ -257,24 +252,12 @@ int main(int argc, char* argv[])
 
     srand((unsigned) time(NULL)); //inicializace pseudonahodneho generatoru
 
-    param_fitev = DATASIZE / (param_in+param_out); //Spocitani poctu pruchodu pro ohodnoceni
+//    param_fitev = DATASIZE / (param_in+param_out); //Spocitani poctu pruchodu pro ohodnoceni
     maxfitness = param_fitev*param_out*32;         //Vypocet max. fitness
     
     for (int i=0; i < param_populace; i++) //alokace pameti pro chromozomy populace
         populace[i] = new chromozom [outputidx + param_out];
     
-    //---------------------------------------------------------------------------
-    // Vytvoreni LOOKUP tabulky pro rychle zjisteni poctu nenulovych bitu v bytu
-    //---------------------------------------------------------------------------
-    for (int i = 0; i < LOOKUPTABSIZE; i++) {
-        int poc1 = 0;
-        int zi = ~i;
-        for (int j=0; j < 8; j++) {
-            poc1 += (zi & 1);
-            zi = zi >> 1;
-        }
-        lookupbit_tab[i] = poc1;
-    }
 
     //-----------------------------------------------------------------------
     //Priprava pole moznych hodnot vstupu pro sloupec podle l-back a ostatnich parametru
@@ -350,10 +333,10 @@ int main(int argc, char* argv[])
         //-----------------------------------------------------------------------
         //Ohodnoceni pocatecni populace
         //-----------------------------------------------------------------------
-        bestfit = 0; bestfit_idx = -1;
+        bestfit = INT_MAX; bestfit_idx = -1;
         ohodnoceni(data /*vektor ocekavanych dat*/, 0, param_populace, -1);
         for (int i=0; i < param_populace; i++) { //nalezeni nejlepsiho jedince
-            if (fitt[i] > bestfit) {
+            if (fitt[i] < bestfit) {
                bestfit = fitt[i];
                bestfit_idx = i;
             }
@@ -369,7 +352,7 @@ int main(int argc, char* argv[])
         // EVOLUCE
         //-----------------------------------------------------------------------
         param_generaci = 0;
-        maxfitpop = 0;
+        maxfitpop = INT_MAX;
         while (param_generaci++ < PARAM_GENERATIONS) {
             //-----------------------------------------------------------------------
             //Periodicky vypis chromozomu populace
@@ -406,7 +389,7 @@ int main(int argc, char* argv[])
                 
                 if (i == parentidx) continue; //preskocime rodice
 
-                if (fitt[i] == maxfitness) {
+                /*if (fitt[i] == maxfitness) {
                    //optimalizace na poc. bloku obvodu
 
                    blk = uzitobloku((chromozom) populace[i]);
@@ -421,10 +404,10 @@ int main(int argc, char* argv[])
                       bestfit = fitt[i];
                       bestblk = blk;
                    }
-                } else if (fitt[i] >= bestfit) {
+                } else*/ if (fitt[i] <= bestfit) {
                    //nalezen lepsi nebo stejne dobry jedinec jako byl jeho rodic
 
-                   if (fitt[i] > bestfit) {
+                   if (fitt[i] < bestfit) {
                       printf("Generation:%d\t\tFittness: %d/%d\n",param_generaci,fitt[i],maxfitness);
                       log = true;
                    }
@@ -438,7 +421,7 @@ int main(int argc, char* argv[])
             //-----------------------------------------------------------------------
             // Vypis fitness populace do xls souboru pri zmene fitness populace/poctu bloku
             //-----------------------------------------------------------------------
-            if ((fitpop > maxfitpop) || (log)) {
+            if ((fitpop < maxfitpop) || (log)) {
                print_xls(xlsfil);
 
                maxfitpop = fitpop;
