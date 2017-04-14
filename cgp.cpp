@@ -389,7 +389,7 @@ int main(int argc, char* argv[])
                 
                 if (i == parentidx) continue; //preskocime rodice
 
-                /*if (fitt[i] == maxfitness) {
+                if (fitt[i] == 0) {
                    //optimalizace na poc. bloku obvodu
 
                    blk = uzitobloku((chromozom) populace[i]);
@@ -404,7 +404,7 @@ int main(int argc, char* argv[])
                       bestfit = fitt[i];
                       bestblk = blk;
                    }
-                } else*/ if (fitt[i] <= bestfit) {
+                } else if (fitt[i] <= bestfit) {
                    //nalezen lepsi nebo stejne dobry jedinec jako byl jeho rodic
 
                    if (fitt[i] < bestfit) {
